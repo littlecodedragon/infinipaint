@@ -346,6 +346,14 @@ void PhoneDrawingProgramScreen::top_toolbar_settings_popup() {
                         .floating = {.offset = {.x = 0, .y = static_cast<float>(io.theme->padding1)}, .zIndex = gui.get_z_index(), .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM}, .attachTo = CLAY_ATTACH_TO_PARENT}
                     }) {
                         text_label_centered(gui, "Player List");
+                        if(main.world->netServer) {
+                            text_button(gui, "force all jump to host phone", "Bring Everyone Here", {
+                                .wide = true,
+                                .onClick = [&] {
+                                    main.world->drawProg.force_clients_to_own_view();
+                                }
+                            });
+                        }
                         left_to_right_line_layout(gui, [&]() {
                             CLAY_AUTO_ID({
                                 .layout = {

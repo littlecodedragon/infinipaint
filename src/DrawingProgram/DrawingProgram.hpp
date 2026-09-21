@@ -79,6 +79,9 @@ class DrawingProgram {
         void invalidate_cache_at_component(CanvasComponentContainer::ObjInfo* objToCheck);
         void preupdate_component(CanvasComponentContainer::ObjInfo* objToCheck);
         void send_transforms_for(const std::vector<CanvasComponentContainer::ObjInfo*>& objsToSendTransformsFor);
+        void send_group_ids_for(const std::vector<CanvasComponentContainer::ObjInfo*>& objs);
+        void force_clients_to_own_view();
+        void process_selected_images(bool freistellen, bool compress);
 
         void on_tab_out();
         void input_add_file_to_canvas_callback(const CustomEvents::AddFileToCanvasEvent& addFile);
@@ -105,6 +108,8 @@ class DrawingProgram {
         std::unique_ptr<DrawingProgramToolBase> drawTool;
     private:
         void process_transform_message(const std::vector<std::pair<NetworkingObjects::NetObjID, CoordSpaceHelper>>& transforms);
+        void process_group_id_message(const std::vector<std::pair<NetworkingObjects::NetObjID, uint64_t>>& groupIds);
+        void process_force_camera_jump(const CoordSpaceHelper& coords, const Vector2f& windowSize);
 
         void drag_drop_update();
         void check_updateable_components();

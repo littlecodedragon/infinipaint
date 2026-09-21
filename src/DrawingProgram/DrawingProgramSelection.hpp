@@ -82,6 +82,9 @@ class DrawingProgramSelection {
 
         void set_to_selection(const std::vector<CanvasComponentContainer::ObjInfo*>& newSelection);
         void add_to_selection(const std::vector<CanvasComponentContainer::ObjInfo*>& newSelection);
+        void expand_selection_with_groups();
+        void group_selection();
+        void ungroup_selection();
         void calculate_aabb();
         void reset_all();
         void reset_transform_data();

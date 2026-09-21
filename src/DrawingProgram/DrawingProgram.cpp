@@ -48,6 +48,12 @@
 #include <chrono>
 #include "../CanvasComponents/ImageCanvasComponent.hpp"
 #include "Layers/DrawingProgramLayer.hpp"
+#include "../ImagePreprocess.hpp"
+#include <Helpers/Random.hpp>
+#include <cereal/types/utility.hpp>
+#ifdef __ANDROID__
+#include "../AndroidJNICalls.hpp"
+#endif
 #include "Layers/DrawingProgramLayerListItem.hpp"
 #include "../ScaleUpCanvas.hpp"
 
@@ -336,6 +342,22 @@ void DrawingProgram::init_server_callbacks() {
         process_transform_message(transforms);
         world.netServer->send_items_to_all_clients(RELIABLE_COMMAND_CHANNEL, CLIENT_TRANSFORM_MANY_COMPONENTS, transforms);
     });
+    world.netServer->add_recv_callback(SERVER_FORCE_CAMERA_JUMP, [&](std::shared_ptr<NetServer::ClientData> client, cereal::PortableBinaryInputArchive& message) {
+        CoordSpaceHelper coords;
+        Vector2f windowSize;
+        message(coords, windowSize);
+        // Only the host may force jumps; ignore client-originated requests.
+        (void)client;
+        (void)coords;
+        (void)windowSize;
+    });
+    world.netServer->add_recv_callback(SERVER_SET_COMPONENT_GROUP_IDS, [&](std::shared_ptr<NetServer::ClientData> client, cereal::PortableBinaryInputArchive& message) {
+        std::vector<std::pair<NetworkingObjects::NetObjID, uint64_t>> groupIds;
+        message(groupIds);
+        (void)client;
+        process_group_id_message(groupIds);
+        world.netServer->send_items_to_all_clients(RELIABLE_COMMAND_CHANNEL, CLIENT_SET_COMPONENT_GROUP_IDS, groupIds);
+    });
 }
 
 void DrawingProgram::init_client_callbacks() {
@@ -344,6 +366,51 @@ void DrawingProgram::init_client_callbacks() {
         message(transforms);
         process_transform_message(transforms);
     });
+    world.netClient->add_recv_callback(CLIENT_FORCE_CAMERA_JUMP, [&](cereal::PortableBinaryInputArchive& message) {
+        CoordSpaceHelper coords;
+        Vector2f windowSize;
+        message(coords, windowSize);
+        process_force_camera_jump(coords, windowSize);
+    });
+    world.netClient->add_recv_callback(CLIENT_SET_COMPONENT_GROUP_IDS, [&](cereal::PortableBinaryInputArchive& message) {
+        std::vector<std::pair<NetworkingObjects::NetObjID, uint64_t>> groupIds;
+        message(groupIds);
+        process_group_id_message(groupIds);
+    });
+}
+
+void DrawingProgram::process_force_camera_jump(const CoordSpaceHelper& coords, const Vector2f& windowSize) {
+    world.drawData.cam.smooth_move_to(world, coords, windowSize);
+}
+
+void DrawingProgram::force_clients_to_own_view() {
+    if(!world.netServer)
+        return;
+    CoordSpaceHelper coords = world.drawData.cam.c;
+    Vector2f windowSize = world.main.window.size.cast<float>().eval();
+    world.netServer->send_items_to_all_clients(RELIABLE_COMMAND_CHANNEL, CLIENT_FORCE_CAMERA_JUMP, coords, windowSize);
+}
+
+void DrawingProgram::process_group_id_message(const std::vector<std::pair<NetworkingObjects::NetObjID, uint64_t>>& groupIds) {
+    for(auto& [id, groupId] : groupIds) {
+        auto objPtr = world.netObjMan.get_obj_temporary_ref_from_id<CanvasComponentContainer>(id);
+        if(!objPtr)
+            continue;
+        objPtr->groupId = groupId;
+    }
+    world.set_to_layout_gui_if_focus();
+}
+
+void DrawingProgram::send_group_ids_for(const std::vector<CanvasComponentContainer::ObjInfo*>& objs) {
+    if(!world.netObjMan.is_connected() || objs.empty())
+        return;
+    std::vector<std::pair<NetworkingObjects::NetObjID, uint64_t>> groupIds;
+    for(auto& obj : objs)
+        groupIds.emplace_back(obj->obj.get_net_id(), obj->obj->groupId);
+    if(world.netObjMan.is_server())
+        world.netServer->send_items_to_all_clients(RELIABLE_COMMAND_CHANNEL, CLIENT_SET_COMPONENT_GROUP_IDS, groupIds);
+    else
+        world.netClient->send_items_to_server(RELIABLE_COMMAND_CHANNEL, SERVER_SET_COMPONENT_GROUP_IDS, groupIds);
 }
 
 void DrawingProgram::process_transform_message(const std::vector<std::pair<NetworkingObjects::NetObjID, CoordSpaceHelper>>& transforms) {
@@ -726,7 +793,23 @@ void DrawingProgram::input_add_file_to_canvas_callback(const CustomEvents::AddFi
 
 void DrawingProgram::add_file_to_canvas_by_path(const std::filesystem::path& filePath, Vector2f dropPos) {
     if(layerMan.is_a_layer_being_edited()) {
-        NetworkingObjects::NetObjTemporaryPtr<ResourceData> imageTempPtr = world.rMan.add_resource_file(filePath);
+        ResourceData resource;
+#ifdef __ANDROID__
+        resource.name = AndroidJNICalls::getFileNameFromURI(filePath.string());
+        if(resource.name.empty())
+            resource.name = "New Resource";
+#else
+        resource.name = std::filesystem::path(filePath).filename().string();
+#endif
+        try {
+            resource.data = std::make_shared<std::string>(read_file_to_string(filePath));
+        }
+        catch(...) {
+            Logger::get().log(Logger::LogType::INFO, "[DrawingProgram::add_file_to_canvas_by_path] Could not open file " + filePath.string());
+            return;
+        }
+        ImagePreprocess::preprocess_resource(resource.name, resource.data, ImagePreprocess::options_from_config(world.main.conf));
+        NetworkingObjects::NetObjTemporaryPtr<ResourceData> imageTempPtr = world.rMan.add_resource(resource);
         if(imageTempPtr) {
             NetworkingObjects::NetObjID imageID = imageTempPtr.get_net_id();
             ResourceDisplay* display = world.rMan.get_display_data(imageID);
@@ -753,6 +836,7 @@ CanvasComponentContainer::ObjInfo* DrawingProgram::add_file_to_canvas_by_data(co
         ResourceData newResource;
         newResource.data = std::make_shared<std::string>(fileBuffer);
         newResource.name = fileName;
+        ImagePreprocess::preprocess_resource(newResource.name, newResource.data, ImagePreprocess::options_from_config(world.main.conf));
         NetworkingObjects::NetObjID imageID = world.rMan.add_resource(newResource).get_net_id();
         ResourceDisplay* display = world.rMan.get_display_data(imageID);
         Vector2f imTrueDim = display->get_dimensions();
@@ -770,6 +854,32 @@ CanvasComponentContainer::ObjInfo* DrawingProgram::add_file_to_canvas_by_data(co
         return newObjInfo;
     }
     return nullptr;
+}
+
+void DrawingProgram::process_selected_images(bool freistellen, bool compress) {
+    auto selected = selection.get_selection_as_set();
+    ImagePreprocess::Options opts = ImagePreprocess::options_from_config(world.main.conf);
+    opts.freistellenOnInsert = freistellen;
+    opts.compressOnInsert = compress;
+    if(!freistellen && !compress)
+        return;
+    for(auto* objInfo : selected) {
+        if(objInfo->obj->get_comp().get_type() != CanvasComponentType::IMAGE)
+            continue;
+        auto& img = static_cast<ImageCanvasComponent&>(objInfo->obj->get_comp());
+        auto resource = world.netObjMan.get_obj_temporary_ref_from_id<ResourceData>(img.d.imageID);
+        if(!resource || !resource->data)
+            continue;
+        ResourceData newRes;
+        newRes.name = resource->name;
+        newRes.data = std::make_shared<std::string>(*resource->data);
+        if(!ImagePreprocess::preprocess_resource(newRes.name, newRes.data, opts))
+            continue;
+        img.d.imageID = world.rMan.add_resource(newRes).get_net_id();
+        objInfo->obj->send_comp_update(*this, true);
+        objInfo->obj->commit_update(*this);
+    }
+    world.rMan.clear_display_cache();
 }
 
 float DrawingProgram::drag_point_radius() {

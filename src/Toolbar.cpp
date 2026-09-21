@@ -1211,6 +1211,14 @@ void Toolbar::player_list() {
         gui.new_id("client list", [&] {
             text_label_centered(gui, "Player List");
             if(!main.world->clientStillConnecting) {
+                if(main.world->netServer) {
+                    text_button(gui, "force all jump to host", "Bring Everyone Here", {
+                        .wide = true,
+                        .onClick = [&] {
+                            main.world->drawProg.force_clients_to_own_view();
+                        }
+                    });
+                }
                 left_to_right_line_layout(gui, [&]() {
                     CLAY_AUTO_ID({
                         .layout = {
@@ -1463,6 +1471,7 @@ void Toolbar::general_settings_inner_gui() {
                 });
             };
             category_button("Generalbutton", "General", GSETTINGS_GENERAL);
+            category_button("Imagesbutton", "Images", GSETTINGS_IMAGES);
             category_button("Graphicsbutton", "Graphics", GSETTINGS_GRAPHICS);
             category_button("Tabletbutton", "Tablet", GSETTINGS_TABLET);
             category_button("Themebutton", "Theme", GSETTINGS_THEME);
@@ -1521,6 +1530,35 @@ void Toolbar::general_settings_inner_gui() {
                         #ifdef ADD_PREFER_X11_OPTION
                             checkbox_boolean_field(gui, "prefer x11", "Prefer X11 over Wayland (Requires restart)", &main.conf.preferX11);
                         #endif
+                    });
+                    break;
+                }
+                case GSETTINGS_IMAGES: {
+                    general_scroll_area("image settings", [&] {
+                        text_label(gui, "On insert / paste:");
+                        checkbox_boolean_field(gui, "compress images on insert", "Compress images automatically", &main.conf.imageCompressOnInsert);
+                        text_label(gui, "Compression format:");
+                        radio_button_selector(gui, "image compress format", &main.conf.imageCompressFormat, {
+                            {"Keep original", ImagePreprocess::CompressFormat::KEEP},
+                            {"WebP", ImagePreprocess::CompressFormat::WEBP},
+                            {"PNG", ImagePreprocess::CompressFormat::PNG}
+                        });
+                        slider_scalar_field(gui, "webp quality", "WebP quality", &main.conf.imageWebpQuality, 1, 100);
+                        checkbox_boolean_field(gui, "freistellen on insert", "Freistellen / remove background on insert", &main.conf.imageFreistellenOnInsert);
+                        text_label(gui, "Freistellen mode:");
+                        radio_button_selector(gui, "freistellen mode", &main.conf.imageFreistellenMode, {
+                            {"Off", ImagePreprocess::FreistellenMode::OFF},
+                            {"White background", ImagePreprocess::FreistellenMode::WHITE_KEY},
+#ifndef __EMSCRIPTEN__
+                            {"Schnell (rembg silueta)", ImagePreprocess::FreistellenMode::REMBG_SCHNELL},
+                            {"Allgemein (rembg bria)", ImagePreprocess::FreistellenMode::REMBG_ALLGEMEIN},
+#endif
+                        });
+                        slider_scalar_field(gui, "white key threshold", "White-key threshold", &main.conf.imageWhiteKeyThreshold, 200, 255);
+                        text_label_light(gui, "Selection toolbar: Compress Images / Freistellen also work afterwards.");
+#ifndef __EMSCRIPTEN__
+                        text_label_light(gui, "rembg uses Tower venv (~/.local/share/tower-rembg) when present.");
+#endif
                     });
                     break;
                 }

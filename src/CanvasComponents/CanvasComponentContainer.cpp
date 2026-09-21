@@ -49,7 +49,7 @@ CanvasComponentContainer::CanvasComponentContainer(NetworkingObjects::NetObjMana
 
 void CanvasComponentContainer::register_class(World& w) {
     auto readConstructorFunc = [&w](const NetworkingObjects::NetObjTemporaryPtr<CanvasComponentContainer>& o, cereal::PortableBinaryInputArchive& a, const std::shared_ptr<NetServer::ClientData>& c) {
-        a(o->coords);
+        a(o->coords, o->groupId);
         o->compAllocator = o.get_obj_man()->read_create_message<CanvasComponentAllocator>(a, c);
         o->compAllocator->comp->compContainer = o.get();
         canvas_scale_up_check(*o, w, c);
@@ -72,6 +72,7 @@ std::unique_ptr<CanvasComponentContainer::CopyData> CanvasComponentContainer::ge
     auto toRet = std::make_unique<CanvasComponentContainer::CopyData>();
     toRet->coords = coords;
     toRet->obj = compAllocator->comp->get_data_copy();
+    // groupId intentionally not copied — paste creates independent objects
     return toRet;
 }
 
@@ -84,18 +85,22 @@ void CanvasComponentContainer::set_object_update_lock(DrawingProgram& drawP, boo
 }
 
 void CanvasComponentContainer::write_constructor_func(const NetworkingObjects::NetObjTemporaryPtr<CanvasComponentContainer>& o, cereal::PortableBinaryOutputArchive& a) {
-    a(o->coords);
+    a(o->coords, o->groupId);
     o->compAllocator.write_create_message(a);
 }
 
 void CanvasComponentContainer::save_file(cereal::PortableBinaryOutputArchive& a) const {
-    a(coords);
+    a(coords, groupId);
     compAllocator->save_file(a);
 }
 
 void CanvasComponentContainer::load_file(cereal::PortableBinaryInputArchive& a, VersionNumber version, NetObjManager& objMan) {
     if(version >= VersionNumber(0, 4, 0)) {
         a(coords);
+        if(version >= VersionNumber(0, 7, 0))
+            a(groupId);
+        else
+            groupId = 0;
         compAllocator = objMan.make_obj_direct<CanvasComponentAllocator>();
         compAllocator->load_file(a, version);
         compAllocator->comp->compContainer = this;
@@ -104,6 +109,7 @@ void CanvasComponentContainer::load_file(cereal::PortableBinaryInputArchive& a, 
         CanvasComponentType t;
         NetworkingObjects::NetObjID uselessID;
         a(t, uselessID, coords);
+        groupId = 0;
         compAllocator = objMan.make_obj_direct<CanvasComponentAllocator>(t);
         compAllocator->comp->load_file(a, version);
         compAllocator->comp->compContainer = this;

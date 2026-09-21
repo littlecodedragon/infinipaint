@@ -44,6 +44,9 @@
 #include "../GUIStuff/ElementHelpers/RadioButtonHelpers.hpp"
 #include "../GUIStuff/ElementHelpers/LayoutHelpers.hpp"
 #include "../GUIStuff/ElementHelpers/ButtonHelpers.hpp"
+#include <Helpers/Random.hpp>
+#include <limits>
+#include <unordered_set>
 
 DrawingProgramSelection::DrawingProgramSelection(DrawingProgram& initDrawP):
     drawP(initDrawP)
@@ -74,6 +77,22 @@ void DrawingProgramSelection::selection_gui(Toolbar& t) {
                     }
                 });
                 text_label(gui, "Stroke Color");
+            });
+            left_to_right_line_layout(gui, [&]() {
+                text_button(gui, "group selection", "Group", {
+                    .onClick = [&] { group_selection(); }
+                });
+                text_button(gui, "ungroup selection", "Ungroup", {
+                    .onClick = [&] { ungroup_selection(); }
+                });
+            });
+            left_to_right_line_layout(gui, [&]() {
+                text_button(gui, "compress selection images", "Compress Images", {
+                    .onClick = [&] { drawP.process_selected_images(false, true); }
+                });
+                text_button(gui, "freistellen selection images", "Freistellen", {
+                    .onClick = [&] { drawP.process_selected_images(true, true); }
+                });
             });
         }
     });
@@ -327,14 +346,50 @@ std::function<bool(const std::shared_ptr<DrawingProgramCacheBVHNode>&)> DrawingP
     return toRet;
 }
 
+void DrawingProgramSelection::expand_selection_with_groups() {
+    std::unordered_set<uint64_t> groupIds;
+    for(auto& c : selectedSet) {
+        if(c->obj->groupId != 0)
+            groupIds.insert(c->obj->groupId);
+    }
+    if(groupIds.empty())
+        return;
+    std::unordered_set<CanvasComponentContainer::ObjInfo*> already(selectedSet.begin(), selectedSet.end());
+    for(auto* c : drawP.layerMan.get_flattened_component_list()) {
+        if(c->obj->groupId != 0 && groupIds.contains(c->obj->groupId) && !already.contains(c)) {
+            selectedSet.push_back(c);
+            already.insert(c);
+        }
+    }
+}
+
+void DrawingProgramSelection::group_selection() {
+    if(selectedSet.size() < 2)
+        return;
+    uint64_t newGroupId = Random::get().int_range<uint64_t>(1, std::numeric_limits<uint64_t>::max());
+    for(auto& c : selectedSet)
+        c->obj->groupId = newGroupId;
+    drawP.send_group_ids_for(selectedSet);
+}
+
+void DrawingProgramSelection::ungroup_selection() {
+    if(selectedSet.empty())
+        return;
+    for(auto& c : selectedSet)
+        c->obj->groupId = 0;
+    drawP.send_group_ids_for(selectedSet);
+}
+
 void DrawingProgramSelection::add_to_selection(const std::vector<CanvasComponentContainer::ObjInfo*>& newSelection) {
     selectedSet.insert(selectedSet.end(), newSelection.begin(), newSelection.end());
+    expand_selection_with_groups();
     sort_selection();
     calculate_aabb();
 }
 
 void DrawingProgramSelection::set_to_selection(const std::vector<CanvasComponentContainer::ObjInfo*>& newSelection) {
     selectedSet = newSelection;
+    expand_selection_with_groups();
     sort_selection();
     calculate_aabb();
 }

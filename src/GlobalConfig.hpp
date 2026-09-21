@@ -21,6 +21,7 @@
 #include <nlohmann/json.hpp>
 #include <Helpers/VersionNumber.hpp>
 #include "InputManager.hpp"
+#include "ImagePreprocess.hpp"
 
 #define DEFAULT_CANVAS_BACKGROUND_COLOR Vector3f{0.07f, 0.07f, 0.07f}
 
@@ -112,6 +113,14 @@ class GlobalConfig {
         std::string displayName;
         bool flipZoomToolDirection = false;
 
+        // Fork: image insert options
+        bool imageCompressOnInsert = true;
+        ImagePreprocess::CompressFormat imageCompressFormat = ImagePreprocess::CompressFormat::WEBP;
+        int imageWebpQuality = 80;
+        bool imageFreistellenOnInsert = false;
+        ImagePreprocess::FreistellenMode imageFreistellenMode = ImagePreprocess::FreistellenMode::WHITE_KEY;
+        int imageWhiteKeyThreshold = 245;
+
         bool disableGraphicsDriverWorkarounds = false;
         int vsyncValue = 0;
 
@@ -134,4 +143,17 @@ NLOHMANN_JSON_SERIALIZE_ENUM(GlobalConfig::AntiAliasing, {
     {GlobalConfig::AntiAliasing::NONE, "None"},
     {GlobalConfig::AntiAliasing::SKIA, "Skia"},
     {GlobalConfig::AntiAliasing::DYNAMIC_MSAA, "Dynamic MSAA"},
+})
+
+NLOHMANN_JSON_SERIALIZE_ENUM(ImagePreprocess::CompressFormat, {
+    {ImagePreprocess::CompressFormat::KEEP, "Keep"},
+    {ImagePreprocess::CompressFormat::WEBP, "WebP"},
+    {ImagePreprocess::CompressFormat::PNG, "PNG"},
+})
+
+NLOHMANN_JSON_SERIALIZE_ENUM(ImagePreprocess::FreistellenMode, {
+    {ImagePreprocess::FreistellenMode::OFF, "Off"},
+    {ImagePreprocess::FreistellenMode::WHITE_KEY, "WhiteKey"},
+    {ImagePreprocess::FreistellenMode::REMBG_SCHNELL, "RembgSchnell"},
+    {ImagePreprocess::FreistellenMode::REMBG_ALLGEMEIN, "RembgAllgemein"},
 })

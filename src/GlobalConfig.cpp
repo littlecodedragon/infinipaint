@@ -69,6 +69,12 @@ nlohmann::json GlobalConfig::get_config_json(const InputManager& input) const {
     toRet["flipZoomToolDirection"] = flipZoomToolDirection;
     toRet["realTimeEraser"] = realTimeEraser;
     toRet["disableTouchForDrawing"] = disableTouchForDrawing;
+    toRet["imageCompressOnInsert"] = imageCompressOnInsert;
+    toRet["imageCompressFormat"] = imageCompressFormat;
+    toRet["imageWebpQuality"] = imageWebpQuality;
+    toRet["imageFreistellenOnInsert"] = imageFreistellenOnInsert;
+    toRet["imageFreistellenMode"] = imageFreistellenMode;
+    toRet["imageWhiteKeyThreshold"] = imageWhiteKeyThreshold;
 #ifndef __EMSCRIPTEN__
     toRet["checkForUpdates"] = checkForUpdates;
 #endif
@@ -147,6 +153,12 @@ void GlobalConfig::set_config_json(InputManager& input, const nlohmann::json& j,
         try{j.at("defaultCanvasBackgroundColor").get_to(defaultCanvasBackgroundColor);} catch(...) {}
     try{j.at("flipZoomToolDirection").get_to(flipZoomToolDirection);} catch(...) {}
     try{j.at("realTimeEraser").get_to(realTimeEraser);} catch(...) {}
+    try{j.at("imageCompressOnInsert").get_to(imageCompressOnInsert);} catch(...) {}
+    try{j.at("imageCompressFormat").get_to(imageCompressFormat);} catch(...) {}
+    try{j.at("imageWebpQuality").get_to(imageWebpQuality);} catch(...) {}
+    try{j.at("imageFreistellenOnInsert").get_to(imageFreistellenOnInsert);} catch(...) {}
+    try{j.at("imageFreistellenMode").get_to(imageFreistellenMode);} catch(...) {}
+    try{j.at("imageWhiteKeyThreshold").get_to(imageWhiteKeyThreshold);} catch(...) {}
 #ifndef __EMSCRIPTEN__
     try{j.at("checkForUpdates").get_to(checkForUpdates);} catch(...) {}
 #endif

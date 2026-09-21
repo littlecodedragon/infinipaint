@@ -101,6 +101,8 @@ class CanvasComponentContainer {
         std::weak_ptr<DrawingProgramCacheBVHNode> cacheParentBvhNode;
         DrawingProgramLayerListItem* parentLayer = nullptr;
         CoordSpaceHelper coords;
+        // 0 = ungrouped. Non-zero IDs move/transform together when any member is selected.
+        uint64_t groupId = 0;
         ObjInfoIterator objInfo;
     private:
         friend class BrushStrokeCanvasComponent;
