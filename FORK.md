@@ -1,33 +1,31 @@
 # Fork features (copilot/infinipaint)
 
 Upstream: [ErrorAtLine0/infinipaint](https://github.com/ErrorAtLine0/infinipaint)  
-Forgejo: https://forgejo.fsociety00.cc/copilot/infinipaint
+Forgejo: https://forgejo.fsociety00.cc/copilot/infinipaint (public)
 
 Save format: `INFPNT000007` / version `0.7.0-fork` (not network-compatible with stock 0.6.x peers).
+
+## CI
+
+| Workflow | Trigger | Runner | Output |
+|----------|---------|--------|--------|
+| `.forgejo/workflows/windows_release.yml` | every push to `main` | **`windows-release`** (Windows + MSVC) | prerelease tag `windows-continuous` |
+
+Register a Windows self-hosted runner: [docs/windows-runner.md](docs/windows-runner.md).  
+Jobs queue until that runner is online (Tower dual-boots Windows).
 
 ## Bring Everyone Here (host)
 
 In the player list, the lobby host gets **Bring Everyone Here**. Clients receive `CLIENT_FORCE_CAMERA_JUMP` and run the same `smooth_move_to` path as **Jump To**.
 
-## Group / Ungroup
+## Group / Ungroup (canvas objects)
 
-With a multi-selection (images, text boxes, shapes, …), use **Group** / **Ungroup** in the selection panel. Grouped objects auto-expand into the selection so they transform together. Membership syncs via `SET_COMPONENT_GROUP_IDS`.
+With a multi-selection (images, brush strokes, text boxes, shapes, …), use **Group** / **Ungroup** in the selection panel. Grouped objects auto-expand into the selection so they transform together. Not related to players.
 
 ## Image compression
 
-Settings → **Images**:
-
-- Compress on insert (default on)
-- Format: Keep / WebP / PNG
-- WebP quality
-
-Selection toolbar: **Compress Images** re-encodes already placed images.
+Settings → **Images**: compress on insert (WebP/PNG/Keep). Selection: **Compress Images**.
 
 ## Freistellen
 
-Settings → **Images**:
-
-- Freistellen on insert
-- Modes: White background (always), or rembg **Schnell** (`silueta`) / **Allgemein** (`bria-rmbg`) when Tower rembg is installed (`~/.local/share/tower-rembg` or `rembg` on `PATH`)
-
-Selection: **Freistellen** applies the configured mode to selected images (then compresses).
+Settings → **Images**: white-key and optional rembg (Tower `silueta` / `bria-rmbg`). Selection: **Freistellen**.

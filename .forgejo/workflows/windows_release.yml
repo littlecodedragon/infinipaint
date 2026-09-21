@@ -1,0 +1,178 @@
+name: Windows Release
+
+# Continuous Windows portable build on every push to main.
+# Needs self-hosted runner label `windows-release` (MSVC 2022).
+# See docs/windows-runner.md
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: infinipaint-windows-release
+  cancel-in-progress: true
+
+jobs:
+  windows-x86_64:
+    runs-on: windows-release
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf .git
+          git init .
+          origin_url="${GITHUB_SERVER_URL#https://}"
+          origin_url="${origin_url#http://}"
+          git remote add origin "https://oauth2:${FORGEJO_TOKEN}@${origin_url}/${GITHUB_REPOSITORY}.git"
+          git -c http.sslVerify=false fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --force FETCH_HEAD
+          git submodule update --init --recursive
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="$(grep -E 'CURRENT_VERSION_STRING' src/VersionConstants.hpp | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          short_sha="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          asset_ver="${ver}+${short_sha}"
+          zip_name="infinipaint-${asset_ver}-win-x86_64-portable.zip"
+          {
+            echo "version=${ver}"
+            echo "tag=windows-continuous"
+            echo "asset_ver=${asset_ver}"
+            echo "zip_name=${zip_name}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Conan
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not (Get-Command conan -ErrorAction SilentlyContinue)) {
+            python -m pip install --user "conan>=2,<3"
+            Get-ChildItem "$env:USERPROFILE\AppData\Roaming\Python" -Recurse -Filter conan.exe -ErrorAction SilentlyContinue |
+              ForEach-Object { $env:Path = "$($_.DirectoryName);$env:Path" }
+          }
+          conan --version
+
+      - name: Build Windows x86_64
+        shell: cmd
+        run: |
+          call windowsinstall\conan_init_x86_64.bat
+          if errorlevel 1 exit /b 1
+          call windowsinstall\build_x86_64.bat
+          if errorlevel 1 exit /b 1
+
+      - name: Package portable zip
+        id: pkg
+        shell: pwsh
+        env:
+          ZIP_NAME: ${{ steps.ver.outputs.zip_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = Get-ChildItem -Path . -Recurse -Filter infinipaint.exe |
+            Where-Object { $_.FullName -match 'Release' } |
+            Select-Object -First 1
+          if (-not $exe) { throw "infinipaint.exe not found under Release" }
+          $outDir = Join-Path (Get-Location) "dist\portable"
+          Remove-Item -Recurse -Force $outDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          Copy-Item $exe.FullName (Join-Path $outDir "infinipaint.exe")
+          $dllDir = Join-Path (Get-Location) "windowsinstall\dlls-x86_64"
+          if (Test-Path $dllDir) {
+            Copy-Item (Join-Path $dllDir "*.dll") $outDir -ErrorAction SilentlyContinue
+          }
+          $dataSrc = Join-Path (Get-Location) "assets\data"
+          if (-not (Test-Path $dataSrc)) { $dataSrc = Join-Path (Get-Location) "data" }
+          Copy-Item -Recurse $dataSrc (Join-Path $outDir "data")
+          New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+          $zipPath = Join-Path (Get-Location) "dist\$env:ZIP_NAME"
+          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          Compress-Archive -Path (Join-Path $outDir "*") -DestinationPath $zipPath
+          "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Get-Item $zipPath | Format-List FullName, Length
+
+      - name: Publish Forgejo release
+        shell: bash
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ steps.ver.outputs.tag }}
+          ASSET_VER: ${{ steps.ver.outputs.asset_ver }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          ZIP_NAME: ${{ steps.ver.outputs.zip_name }}
+          FORGEJO_CURL_INSECURE: "true"
+        run: |
+          set -euo pipefail
+          zip_path="dist/${ZIP_NAME}"
+          test -f "$zip_path"
+          command -v jq >/dev/null
+          command -v curl >/dev/null
+
+          curl_tls=()
+          if [ "${FORGEJO_CURL_INSECURE}" = "true" ]; then
+            curl_tls+=(--insecure)
+          fi
+
+          api_base="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases"
+          body=$(printf '%s\n' \
+            "Continuous Windows build from \`main\`." \
+            "" \
+            "- Version: **${VERSION}**" \
+            "- Commit: \`${GITHUB_SHA}\`" \
+            "- Asset: \`${ZIP_NAME}\`" \
+            "" \
+            "Updated on every push to \`main\`. Requires runner label \`windows-release\` (see docs/windows-runner.md).")
+
+          payload=$(jq -n \
+            --arg tag "$VERSION_TAG" \
+            --arg name "Windows continuous (${ASSET_VER})" \
+            --arg body "$body" \
+            '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:true}')
+
+          tag_enc=$(jq -nr --arg t "$VERSION_TAG" '$t|@uri')
+          resp_file=$(mktemp)
+          status=$(curl "${curl_tls[@]}" -sS -o "$resp_file" -w '%{http_code}' \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            "${api_base}/tags/${tag_enc}")
+
+          release_id=""
+          if [ "$status" = "200" ]; then
+            release_id=$(jq -r '.id' < "$resp_file")
+            curl "${curl_tls[@]}" -sS -X PATCH \
+              -H "Authorization: token ${FORGEJO_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              "${api_base}/${release_id}" >/dev/null
+            jq -r --arg n "$ZIP_NAME" '.assets[]? | select(.name==$n) | .id' < "$resp_file" | while read -r aid; do
+              [ -n "$aid" ] || continue
+              curl "${curl_tls[@]}" -sS -X DELETE \
+                -H "Authorization: token ${FORGEJO_TOKEN}" \
+                "${api_base}/${release_id}/assets/${aid}" >/dev/null || true
+            done
+          elif [ "$status" = "404" ]; then
+            status=$(curl "${curl_tls[@]}" -sS -o "$resp_file" -w '%{http_code}' -X POST \
+              -H "Authorization: token ${FORGEJO_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              "$api_base")
+            [ "$status" = "200" ] || [ "$status" = "201" ] || { cat "$resp_file"; exit 1; }
+            release_id=$(jq -r '.id' < "$resp_file")
+          else
+            cat "$resp_file"; exit 1
+          fi
+
+          name_enc=$(jq -nr --arg n "$ZIP_NAME" '$n|@uri')
+          curl "${curl_tls[@]}" -sS -X POST \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"${zip_path}" \
+            "${api_base}/${release_id}/assets?name=${name_enc}" \
+            | jq -r '.browser_download_url // .name // .'
