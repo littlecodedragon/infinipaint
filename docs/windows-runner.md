@@ -13,9 +13,13 @@ File: `.github/workflows/windows_release.yml`
 | | |
 |---|---|
 | Trigger | every push to `main`, plus `workflow_dispatch` |
-| Runner | `windows-latest` (GitHub-hosted) |
-| Build | `windowsinstall/conan_init_x86_64.bat` + `build_x86_64.bat` |
+| Runner | `windows-latest` (GitHub-hosted, MSVC ~195) |
+| Build | Conan profile `win-ci` (detected) + `windowsinstall/build_x86_64.bat` |
 | Output | prerelease tag **`windows-continuous`** with a portable zip |
+
+Local Tower Windows can keep using `windowsinstall/conan_init_x86_64.bat`
+(`conan/profiles/win-x86_64`, MSVC 194). CI generates a `win-ci` profile for
+whatever MSVC `windows-latest` ships.
 
 ## GitHub remote
 

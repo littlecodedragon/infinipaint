@@ -37,10 +37,26 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "conan>=2,<3"
           conan --version
-          # Fresh runners have no default profile; host==build for MSVC.
-          if (-not (Test-Path "$env:USERPROFILE\.conan2\profiles\default")) {
-            conan profile detect --force
-          }
+          # Fresh runners: detect MSVC (windows-latest is currently 195 / VS 18).
+          conan profile detect --force
+          $default = Join-Path $env:USERPROFILE ".conan2\profiles\default"
+          $verLine = Select-String -Path $default -Pattern 'compiler.version=' | Select-Object -First 1
+          $msvcVer = ($verLine.Line -split '=')[1].Trim()
+          if (-not $msvcVer) { throw "could not read compiler.version from default profile" }
+          # Host profile matching the runner (repo win-x86_64 still pins 194 for local Tower).
+          $p = Join-Path $env:USERPROFILE ".conan2\profiles\win-ci"
+          @"
+          [settings]
+          arch=x86_64
+          build_type=Release
+          compiler=msvc
+          compiler.cppstd=23
+          compiler.runtime=dynamic
+          compiler.version=$msvcVer
+          os=Windows
+          "@.Trim() | Set-Content -Path $p -Encoding ascii
+          Write-Host "win-ci MSVC version=$msvcVer"
+          Get-Content $p
 
       - name: Resolve version
         id: ver
@@ -61,7 +77,9 @@ jobs:
       - name: Build Windows x86_64
         shell: cmd
         run: |
-          call windowsinstall\conan_init_x86_64.bat
+          call .\conan\export_libs.bat
+          if errorlevel 1 exit /b 1
+          conan install . -of=build-x86_64 --build=missing -pr:h=win-ci -pr:b=default
           if errorlevel 1 exit /b 1
           call windowsinstall\build_x86_64.bat
           if errorlevel 1 exit /b 1
