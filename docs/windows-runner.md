@@ -1,24 +1,37 @@
-# Windows Forgejo runner (`windows-release`)
+# Windows continuous release (GitHub Actions)
 
-Tower dual-boots Windows. Native InfiniPaint Windows builds need **MSVC 2022**
-(see `docs/BUILDING.md` + `windowsinstall/`). There is no Linux cross-build path.
+Native InfiniPaint Windows builds need **MSVC** (see `docs/BUILDING.md` +
+`windowsinstall/`). There is no Linux cross-build path.
 
-## One-time setup (on Windows)
+The fork publishes a portable zip from a **GitHub** repository using the
+GitHub-hosted runner `windows-latest` (Visual Studio / MSVC preinstalled).
 
-1. Install Visual Studio 2022 Build Tools (C++), CMake, Git, Python 3.
-2. `pip install "conan>=2,<3"`.
-3. Download [forgejo-runner](https://code.forgejo.org/forgejo/runner/releases) for Windows.
-4. Register against `https://forgejo.fsociety00.cc` with label **`windows-release`**
-   (repo or org runner; Actions must be enabled — already on for `copilot/infinipaint`).
-5. Run the runner as a service or in a logged-on session when you want CI to drain.
+## Workflow
 
-## Behaviour
+File: `.github/workflows/windows_release.yml`
 
-Workflow: `.forgejo/workflows/windows_release.yml`
+| | |
+|---|---|
+| Trigger | every push to `main`, plus `workflow_dispatch` |
+| Runner | `windows-latest` (GitHub-hosted) |
+| Build | `windowsinstall/conan_init_x86_64.bat` + `build_x86_64.bat` |
+| Output | prerelease tag **`windows-continuous`** with a portable zip |
 
-- Triggers on every push to `main` (and `workflow_dispatch`)
-- Builds x86_64 portable zip via `windowsinstall/*_x86_64.bat`
-- Publishes/updates prerelease tag **`windows-continuous`**
+## GitHub remote
 
-Jobs stay queued in Forgejo until a `windows-release` runner is online
-(same pattern as `desktop-release` capacity/queue on Tower Linux).
+Recommended remote name: `github`
+
+```bash
+git remote add github https://github.com/littlecodedragon/infinipaint.git
+git push -u github main
+```
+
+Releases appear under:
+https://github.com/littlecodedragon/infinipaint/releases/tag/windows-continuous
+
+## Forgejo note
+
+`.forgejo/workflows/windows_release.yml` still targets a Forgejo self-hosted
+label `windows-release` (Tower dual-boot). Prefer the GitHub workflow above for
+unattended continuous Windows zips; keep Forgejo for the public forge mirror if
+desired.

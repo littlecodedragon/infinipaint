@@ -1,7 +1,8 @@
 # Fork features (copilot/infinipaint)
 
 Upstream: [ErrorAtLine0/infinipaint](https://github.com/ErrorAtLine0/infinipaint)  
-Forgejo: https://forgejo.fsociety00.cc/copilot/infinipaint (public)
+Forgejo: https://forgejo.fsociety00.cc/copilot/infinipaint (public)  
+GitHub (CI / Windows zip): https://github.com/littlecodedragon/infinipaint
 
 Save format: `INFPNT000007` / version `0.7.0-fork` (not network-compatible with stock 0.6.x peers).
 
@@ -9,10 +10,11 @@ Save format: `INFPNT000007` / version `0.7.0-fork` (not network-compatible with 
 
 | Workflow | Trigger | Runner | Output |
 |----------|---------|--------|--------|
-| `.forgejo/workflows/windows_release.yml` | every push to `main` | **`windows-release`** (Windows + MSVC) | prerelease tag `windows-continuous` |
+| `.github/workflows/windows_release.yml` | every push to `main` | GitHub-hosted **`windows-latest`** | prerelease tag `windows-continuous` |
+| `.forgejo/workflows/windows_release.yml` | every push to `main` | Forgejo self-hosted `windows-release` (optional) | same tag on Forgejo |
 
-Register a Windows self-hosted runner: [docs/windows-runner.md](docs/windows-runner.md).  
-Jobs queue until that runner is online (Tower dual-boots Windows).
+Primary path: GitHub Actions — see [docs/windows-runner.md](docs/windows-runner.md).  
+Download: https://github.com/littlecodedragon/infinipaint/releases/tag/windows-continuous
 
 ## Bring Everyone Here (host)
 

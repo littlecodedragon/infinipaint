@@ -19,7 +19,7 @@
 
 InfiniPaint is a **collaborative, infinite** canvas note-taking/drawing app. Unlike many other infinite canvas apps, **there is no zoom-in or zoom-out limit** (at least up until the point your computer runs out of memory). This means that this app is very good at things such as drawing sketches of the solar system to scale, or just drawing any massive objects with tiny details. Of course, even though this is a feature, this app is also perfectly well suited for use as a normal canvas.
 
-> **This repository is a fork** hosted at [forgejo.fsociety00.cc/copilot/infinipaint](https://forgejo.fsociety00.cc/copilot/infinipaint). Extra features (host view sync, grouping, image compression, freistellen) are documented in [FORK.md](FORK.md).
+> **This repository is a fork** — Forgejo: [copilot/infinipaint](https://forgejo.fsociety00.cc/copilot/infinipaint), GitHub (Windows CI): [littlecodedragon/infinipaint](https://github.com/littlecodedragon/infinipaint). Extra features are documented in [FORK.md](FORK.md).
 
 You can try the web version of this app at [infinipaint.com](https://infinipaint.com) (requires a WebGL2 capable browser). The web version was compiled from C++ to Javascript using Emscripten, and may contain some bugs, so if possible, please consider downloading the native version for a better experience.
 

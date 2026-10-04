@@ -1,0 +1,109 @@
+name: Windows Release
+
+# Continuous Windows portable build on every push to main.
+# Uses GitHub-hosted windows-latest (MSVC preinstalled).
+# See docs/windows-runner.md
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: infinipaint-windows-release
+  cancel-in-progress: true
+
+jobs:
+  windows-x86_64:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Conan
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "conan>=2,<3"
+          conan --version
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="$(grep -E 'CURRENT_VERSION_STRING' src/VersionConstants.hpp | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          short_sha="$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          asset_ver="${ver}+${short_sha}"
+          zip_name="infinipaint-${asset_ver}-win-x86_64-portable.zip"
+          {
+            echo "version=${ver}"
+            echo "tag=windows-continuous"
+            echo "asset_ver=${asset_ver}"
+            echo "zip_name=${zip_name}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Windows x86_64
+        shell: cmd
+        run: |
+          call windowsinstall\conan_init_x86_64.bat
+          if errorlevel 1 exit /b 1
+          call windowsinstall\build_x86_64.bat
+          if errorlevel 1 exit /b 1
+
+      - name: Package portable zip
+        id: pkg
+        shell: pwsh
+        env:
+          ZIP_NAME: ${{ steps.ver.outputs.zip_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = Get-ChildItem -Path . -Recurse -Filter infinipaint.exe |
+            Where-Object { $_.FullName -match 'Release' } |
+            Select-Object -First 1
+          if (-not $exe) { throw "infinipaint.exe not found under Release" }
+          $outDir = Join-Path (Get-Location) "dist\portable"
+          Remove-Item -Recurse -Force $outDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          Copy-Item $exe.FullName (Join-Path $outDir "infinipaint.exe")
+          $dllDir = Join-Path (Get-Location) "windowsinstall\dlls-x86_64"
+          if (Test-Path $dllDir) {
+            Copy-Item (Join-Path $dllDir "*.dll") $outDir -ErrorAction SilentlyContinue
+          }
+          $dataSrc = Join-Path (Get-Location) "assets\data"
+          if (-not (Test-Path $dataSrc)) { $dataSrc = Join-Path (Get-Location) "data" }
+          Copy-Item -Recurse $dataSrc (Join-Path $outDir "data")
+          New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+          $zipPath = Join-Path (Get-Location) "dist\$env:ZIP_NAME"
+          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          Compress-Archive -Path (Join-Path $outDir "*") -DestinationPath $zipPath
+          "zip_path=$zipPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Get-Item $zipPath | Format-List FullName, Length
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Windows continuous (${{ steps.ver.outputs.asset_ver }})
+          prerelease: true
+          body: |
+            Continuous Windows build from `main`.
+
+            - Version: **${{ steps.ver.outputs.version }}**
+            - Commit: `${{ github.sha }}`
+            - Asset: `${{ steps.ver.outputs.zip_name }}`
+
+            Updated on every push to `main`. Built on GitHub-hosted `windows-latest`.
+          files: dist/${{ steps.ver.outputs.zip_name }}
+          fail_on_unmatched_files: true
